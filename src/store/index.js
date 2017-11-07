@@ -202,6 +202,27 @@ export const store = new Vuex.Store({
         updateProperyInternal(state, object, collectionsMeta.Cluster, property, newValue, areaId)
       }
     },
+    mergeClusters (state, { areaId, clusterIds }) {
+      console.log('clusterIds', clusterIds)
+      let firstClusterId = clusterIds[0]
+      for (let i = 1; i < clusterIds.length; i++) {
+        // каждый кластера начиная со второго - переносим все его ключи в первый
+        let area = state.areas.find(ar => {
+          return ar.id === areaId
+        })
+        area.keywords.forEach(keywordInCache => {
+          //console.log('checking key', keywordInCache)
+          if (keywordInCache.assignedCluster === clusterIds[i]) {
+            let updatedKeyword = {
+              keyword: keywordInCache.keyword,
+              assignedCluster: firstClusterId
+            }
+            console.log('setting new keyword:', updatedKeyword)
+            userProjectRef(state).collection('areas').doc(areaId).collection('keywords').doc(keywordInCache.keyword).set(updatedKeyword, { merge: true })
+          }
+        })
+      }
+    },
 
     // login etc
     setUser (state, payload) {
@@ -630,7 +651,7 @@ export const store = new Vuex.Store({
 
       // получаем запросы по маркерам
       let postParams = {
-        regionid: '213',
+        regionid: '225',
         collecttype: collectType, // Тип сбора данныз 0:сбор частотностей ключевых слов, type 1: Сбор левой колонки Wordstat
         name: 'test api wordstat', //Имя проекта
         pages: 5, // Сколько нужно спарсить страниц левой колонки Wordstat (0-10 или 40(все)), Если выбран парсинг частотнности - 0, эта переменная не нужна
@@ -656,23 +677,21 @@ export const store = new Vuex.Store({
       })
     },
     startListening ({ state, getters, commit, dispatch }) {
-      // создаем дефолтную зону
-      let defaultAreaRef = userProjectRef(state).collection(collectionsMeta.Area.collectionName).doc(collectionsMeta.Area.defaultId)
-      defaultAreaRef.get()
-        .then(doc => {
-          if (!doc.exists) {
-            let defaultArea = {
-              name: 'Не распределенные кластеры'
-            }
-            defaultArea[collectionsMeta.Area.idField] = collectionsMeta.Area.defaultId
-            defaultArea.keywords = []
-            defaultArea.clusters = []
-            defaultAreaRef.set(defaultArea)
-          }
-        })
-      console.log('Начинаем слушать..')
       if (getters.user !== undefined && getters.user !== null) {
         if (getters.user.projectId !== undefined && getters.user.projectId !== null) {
+          // создаем дефолтную зону
+          let defaultAreaRef = userProjectRef(state).collection(collectionsMeta.Area.collectionName).doc(collectionsMeta.Area.defaultId)
+          defaultAreaRef.get()
+            .then(doc => {
+              if (!doc.exists) {
+                let defaultArea = {
+                  name: 'Не распределенные кластеры'
+                }
+                defaultArea[collectionsMeta.Area.idField] = collectionsMeta.Area.defaultId
+                defaultAreaRef.set(defaultArea)
+              }
+            })
+          console.log('Начинаем слушать..')
           // проверяем что есть проект
           let returnedValue = userProjectRef(state).get()
             .then(doc => {
@@ -843,7 +862,7 @@ export const store = new Vuex.Store({
 })
 function parseClusterUrl (newCluster) {
   // пустой юрл заменяем на дамми
-  if (newCluster.fullurl === undefined && newCluster.fullurl === null && newCluster.fullurl === '') {
+  if (newCluster.fullurl === undefined || newCluster.fullurl === null || newCluster.fullurl === '') {
     newCluster.fullurl = 'https://vselaki.ru/undefined-cluster';
   }
   newCluster.fullurl = newCluster.fullurl.toLowerCase()

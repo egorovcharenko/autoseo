@@ -2,18 +2,18 @@
   div
     h4 Импортировать структуру сайта
     v-select(v-bind:items="areas", item-text="name", v-model="selectedAreaId", label="Зона, в которую импортировать", item-value="id")
-    el-upload.upload-demo(drag, action='/clusters/import/handle', :on-preview='handlePreview', :on-remove='handleRemove', :on-change='handleChange', :auto-upload='false', v-if='selectedAreaId')
-      i.el-icon-upload
-      .el-upload__text
-        | Перетащите сюда CSV из Screaming Seo Spider или
-        em выберите файл
-      .el-upload__tip(slot='tip') CSV из Screaming Seo Spider
-    h4 Импортировать кластеризацию из Раша
-    el-upload.upload-demo(drag, action='/clusters/import/handle2', :on-change='handleChangeRush', :auto-upload='false', v-if='selectedAreaId')
-      i.el-icon-upload
-      .el-upload__text
-        | Перетащите сюда XSLX из Rush Analytics
-        em выберите файл
+    // -
+      el-upload.upload-demo(drag, action='/clusters/import/handle', :on-preview='handlePreview', :on-remove='handleRemove', :on-change='handleChange', :auto-upload='false', v-if='selectedAreaId')
+        i.el-icon-upload
+        .el-upload__text
+          | Перетащите сюда CSV из Screaming Seo Spider
+        .el-upload__tip(slot='tip') CSV из Screaming Seo Spider
+    div(v-if='selectedAreaId')
+      h5 Импортировать кластеризацию из Раша
+      el-upload.upload-demo(drag, action='/clusters/import/handle2', :on-change='handleChangeRush', :auto-upload='false' )
+        i.el-icon-upload
+        .el-upload__text
+          | Перетащите сюда XSLX из Rush Analytics
 </template>
 
 <script>
@@ -94,10 +94,13 @@ export default {
                 console.log(row["Ключевое слово"]);
                 let newCluster = {
                   name: row["Название кластера"],
-                  fullurl: row["Релевантный URL"],
-                  highlights: row["Подсветки для кластерa"]
+                  fullurl: row["Релевантный URL"]
                 };
-
+                let highlights = row["Подсветки для кластерa"]
+                if(highlights){
+                  newCluster.highlights = highlights 
+                }
+                
                 let newKeyword = {
                   keyword: row["Ключевое слово"],
                   type: "rush"

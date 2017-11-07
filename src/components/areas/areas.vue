@@ -8,8 +8,8 @@
           v-btn(@click='addArea()') Добавить зону
         v-data-table(selected-key='name', v-bind:headers='headersAreas', v-bind:items='areas', v-bind:search='search', item-key='id', v-bind:pagination.sync='paginationAreas')
           template(slot='items', scope='props')
-            tr(@click='selectArea(props.item.id)')
-              td
+            tr 
+              td 
                 v-edit-dialog(@open='tmppriority = props.item.priority', @save='saveAreaPriority(props.item, tmppriority)', large)
                   v-chip(color='red', text-color='white', v-if="props.item.priority === '1high'") Высокий 
                   v-chip(color='yellow', text-color='black', v-if="props.item.priority === '2medium'")  Средний 
@@ -25,6 +25,7 @@
                 div(style='min-height: 30px; min-width: 100px;')
                   v-edit-dialog(@open='tmp_name = props.item.name', @save='saveAreaName(props.item, tmp_name)', large, lazy)
                     | {{ props.item.name }}
+                    v-btn(@click='selectArea(props.item.id)') К кластерам
                     v-text-field(label='Название', slot='input', v-model='tmp_name', single-line, counter)
           template(slot='pageText', scope='{ pageStart, pageStop }')
             | From {{ pageStart }} to {{ pageStop }}

@@ -11,7 +11,17 @@
         v-text-field.mx-1(label="Новый кластер",v-model="newClusterUrl", :rules="newClusterUrlRules", required)
         v-btn.mx-1(small, @click='addNewCluster') Добавить кластер
         v-btn.mx-1.red(small, @click='deleteCluster') Удалить кластер
-      v-data-table(light, select-all, selected-key='id', v-bind:headers='headersClusters', v-bind:items='clusters', v-bind:search='search', v-model='selectedClusterIds', item-key='id', v-bind:pagination.sync='paginationClusters')
+        v-btn.mx-1(small, @click='mergeClusters' v-if='selectedClusterIds.length > 1') Объединить кластеры
+      v-data-table(
+        light, 
+        select-all, 
+        selected-key='id', 
+        v-bind:headers='headersClusters', 
+        v-bind:items='clusters', 
+        v-bind:search='search', 
+        v-model='selectedClusterIds', 
+        item-key='id', 
+        v-bind:pagination.sync='paginationClusters')
         template(slot='items', scope='props')
           tr(:active='selectedClusterId === props.item.id', @click='selectedClusterId = props.item.id')
             td
@@ -373,6 +383,12 @@ export default {
         });
       }
     },
+    mergeClusters () {
+      this.$store.commit("mergeClusters", {
+        areaId: this.$store.getters.selectedAreaId,
+        clusterIds: this.$data.selectedClusterIds.map(el => { return el.id })
+      });
+    },
     deleteCluster() {
       this.$store.commit("deleteCluster", {
         areaId: this.$store.getters.selectedAreaId,
@@ -394,11 +410,11 @@ export default {
       let newKeyword = {
         areaId: this.$store.getters.selectedAreaId,
         newKeyword: this.$data.newUnassignedKeyword
-      }
+      };
       if (this.$data.selectedClusterId) {
-        newKeyword.assignedCluster = this.$data.selectedClusterId
+        newKeyword.assignedCluster = this.$data.selectedClusterId;
       }
-      console.log(newKeyword)
+      console.log(newKeyword);
       this.$store.commit("addNewUnassignedKeyword", newKeyword);
       this.$data.newUnassignedKeyword = null;
     },
@@ -496,28 +512,29 @@ export default {
           });
           level++;
         });
-      }
 
-      // добавляем количество запросов и другое
-      if (tempClusters) {
+        // добавляем количество запросов и другое
         let keywords = this.$store.getters.allKeywordsForArea(
           this.$store.getters.selectedAreaId
         );
-        tempClusters.forEach(el => {
-          let thisKeys = keywords.filter(key => {
-            return key.assignedCluster === el.id;
+
+        if (keywords) {
+          tempClusters.forEach(el => {
+            let thisKeys = keywords.filter(key => {
+              return key.assignedCluster === el.id;
+            });
+            el.keywords = thisKeys.length;
+            let sum = 0;
+            thisKeys.forEach(el => {
+              sum += el.freqExact ? el.freqExact : 0;
+            });
+            el.freq = sum;
+            // добавляем массив чекбоксов, если нужно
+            if (el.checks === undefined) {
+              el.checks = [];
+            }
           });
-          el.keywords = thisKeys.length;
-          let sum = 0;
-          thisKeys.forEach(el => {
-            sum += el.freqExact ? el.freqExact : 0;
-          });
-          el.freq = sum;
-          // добавляем массив чекбоксов, если нужно
-          if (el.checks === undefined) {
-            el.checks = [];
-          }
-        });
+        }
       }
       return tempClusters;
     },
@@ -549,7 +566,7 @@ export default {
       let clusters = this.$store.getters.allClustersForArea(
         this.$store.getters.selectedAreaId
       );
-      if (clusters) {
+      if (clusters && resultingKeywords) {
         resultingKeywords.forEach(el => {
           if (el.assignedCluster) {
             let foundCluster = clusters.find(elClust => {

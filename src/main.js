@@ -7,7 +7,10 @@ import { store } from './store'
 
 import * as firebase from 'firebase'
 import Element1 from 'element-ui'
-
+import moment from "moment"
+import VueMomentJS from "vue-momentjs"
+ 
+Vue.use(VueMomentJS, moment);
 Vue.use(Element1)
 Vue.use(Vuetify)
 

@@ -7,6 +7,7 @@ const htmlToJson = require('html-to-json')
 const parseString = require('xml2js').parseString
 const XLSX = require('xlsx')
 const queryString = require('query-string')
+const moment = require('moment');
 
 admin.initializeApp(functions.config().firebase)
 
@@ -64,7 +65,11 @@ exports.parseWordstat = functions.https.onRequest((req, res) => {
         parseString((response.data), (err, result) => {
           console.log('json data:', result['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['ns1:rushapi__create_wordstat_projectResponse'][0])
           let resultingId = result['SOAP-ENV:Envelope']['SOAP-ENV:Body'][0]['ns1:rushapi__create_wordstat_projectResponse'][0]['return'][0]['_']
-          res.status(response.status).send(resultingId)
+          if (resultingId === 'ERROR_LOW_BALANCE') {
+            res.status(500).send('Не достаточно средств на балансе')
+          } else {
+            res.status(response.status).send(resultingId)
+          }
         })
       })
   })
@@ -224,6 +229,56 @@ exports.getIntent = functions.https.onRequest((req, res) => {
             let newKey = {
               keyword: key,
               intent: response.data.data[key]
+            }
+            result.push(newKey)
+          }
+        }
+      }
+      res.status(200).send(result)
+    }).catch(function (error) {
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.log(error.response.data)
+        console.log(error.response.status)
+        console.log(error.response.headers)
+      } else if (error.request) {
+        // The request was made but no response was received
+        // `error.request` is an instance of XMLHttpRequest in the browser and an instance of
+        // http.ClientRequest in node.js
+        console.log(error.request)
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.log('Error', error.message)
+      }
+      console.log(error.config)
+    })
+  })
+})
+
+exports.getPositions = functions.https.onRequest((req, res) => {
+  let url = 'https://tools.pixelplus.ru/api/fastcheck?key=e7c0b6a47ddc14bb491ee47d272b70c8'
+
+  cors(req, res, () => {
+    let data = queryString.stringify({ url: 'https://vselaki.ru', requests: req.body.keywords, lr: 213 }, { arrayFormat: 'bracket' })
+    console.log('request data:', data)
+    axios({
+      method: 'post',
+      url: url,
+      data: data,
+      headers: {
+        'Content-type': 'application/x-www-form-urlencoded'
+      }
+    }).then(response => {
+      // преобразуем в нужный формат
+      let result = []
+      if (response.data) {
+        if (response.data.queries) {
+          for (let key in response.data.queries) {
+            let newKey = {
+              keyword: key,
+              newPosition: response.data.queries[key].position,
+              relevantUrl: response.data.queries[key].full_relevant_URL
             }
             result.push(newKey)
           }

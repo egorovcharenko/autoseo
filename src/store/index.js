@@ -4,6 +4,7 @@ import * as firebase from 'firebase'
 import * as firestore from 'firebase/firestore'
 import axios from 'axios'
 import router from '../router'
+import moment from 'moment'
 
 Vue.use(Vuex)
 firestore // hack
@@ -60,15 +61,28 @@ const collectionsMeta = {
 }
 
 function updateProperyInternal (state, object, objectType, property, newValue, areaId) {
+  console.log('Обновляю свойство у объекта ', object, ', свойство', property, ', новое значение', newValue)
   if (!areaId) {
     object[property] = newValue
     let objectIdField = objectType.idField
     userProjectRef(state).collection(objectType.collectionName).doc(object[objectIdField]).set(object, { merge: true })
+      .then(function() {
+        console.log("Свойство успешно обновлено")
+      })
+      .catch(function(error) {
+          console.error("Ошибка при обновлении свойства: ", error)
+      })
   } else {
     let dumbObject = {}
     dumbObject[property] = newValue
     let objectIdField = objectType.idField
-    userProjectRef(state).collection('areas').doc(areaId).collection(objectType.collectionName).doc(object[objectIdField]).set(dumbObject, { merge: true })
+    userProjectRef(state).collection('areas').doc(areaId).collection(objectType.collectionName).doc(object[objectIdField]).set(dumbObject, { merge: true })      
+      .then(function() {
+        console.log("Свойство успешно обновлено")
+      })
+      .catch(function(error) {
+          console.error("Ошибка при обновлении свойства: ", error)
+      })
   }
 }
 
@@ -101,7 +115,12 @@ export const store = new Vuex.Store({
     // {
     //   id: '3434523452345',
     //   keyword: 'запрос',
-    //   type: 'wordstat'
+    //   type: 'wordstat',
+    //   positions: [
+    //     date: '21.08.2017',
+    //     position: 100,
+    //     url: 'https://vselaki.ru/123'
+    //   ]
     // }
     areas: [],
     selectedAreaId: undefined,
@@ -117,6 +136,8 @@ export const store = new Vuex.Store({
     createNewArea (state, { area }) {
       let areaRef = userProjectRef(state).collection('areas').doc()
       area.id = areaRef.id
+      area.clusters = []
+      area.keywords = []
       areaRef.set(area)
     },
     addArea (state, { area }) {
@@ -126,15 +147,22 @@ export const store = new Vuex.Store({
       state.selectedAreaId = selectedAreaId
       router.push('/clusters')
     },
+    syncReplaceArea (state, { areaId, area }) {
+      let foundArea = state.areas.find(ar => {
+        return ar.id === area.id
+      })
+      foundArea.name = area.name
+    },
 
     // clusters
     moveClustersToNewArea (state, { clustersToMove, oldAreaId, newAreaId }) {
       clustersToMove.forEach(cluster => {
         let oldAreaRef = userProjectRef(state).collection('areas').doc(oldAreaId)
         let newAreaRef = userProjectRef(state).collection('areas').doc(newAreaId)
+        
+        // переносим кластер
         let clusterToMoveRef = oldAreaRef.collection('clusters').doc(cluster.id)
         let newClusterRef = newAreaRef.collection('clusters').doc(cluster.id)
-
         clusterToMoveRef.get().then(function (doc) {
           if (doc.exists) {
             let clusterData = doc.data()
@@ -142,6 +170,19 @@ export const store = new Vuex.Store({
             clusterToMoveRef.delete()
           }
         })
+
+        // переносим все ключи кластера
+        let keywordsToMoveQuery = oldAreaRef.collection('keywords').where("assignedCluster", "==", cluster.id)
+          .get()
+          .then(function(querySnapshot) {
+            querySnapshot.forEach( doc => {
+              newAreaRef.collection('keywords').doc(doc.data().keyword).set(doc.data(), { merge: true })
+              oldAreaRef.collection('keywords').doc(doc.data().keyword).delete()
+            })
+          })
+          .catch(function(error) {
+            console.log("Error getting documents: ", error)
+          })
       })
     },
     deleteCluster (state, { areaId, clusterId }) {
@@ -203,7 +244,7 @@ export const store = new Vuex.Store({
       }
     },
     mergeClusters (state, { areaId, clusterIds }) {
-      console.log('clusterIds', clusterIds)
+      console.log('выбранные clusterIds:', clusterIds)
       let firstClusterId = clusterIds[0]
       for (let i = 1; i < clusterIds.length; i++) {
         // каждый кластера начиная со второго - переносим все его ключи в первый
@@ -217,7 +258,7 @@ export const store = new Vuex.Store({
               keyword: keywordInCache.keyword,
               assignedCluster: firstClusterId
             }
-            console.log('setting new keyword:', updatedKeyword)
+            console.log('меняем ключ:', updatedKeyword, ", присваиваем его кластеру (id):", firstClusterId)
             userProjectRef(state).collection('areas').doc(areaId).collection('keywords').doc(keywordInCache.keyword).set(updatedKeyword, { merge: true })
           }
         })
@@ -452,6 +493,15 @@ export const store = new Vuex.Store({
     updateKeys ({ commit, store, state, dispatch }, { areaId, keysArray }) {
       console.log('updateKeys, keysArray:', keysArray)
       keysArray.forEach(key => {
+        // если в слове есть новая позиция - добавить ее в массив существующий
+        if (key.newPosition) {
+          if (!key.positions) {
+            key.positions = {}
+          }
+          key.positions[moment().format('DD.MM.YYYY')] = key.newPosition
+          key.positions[moment().format('DD.MM.YYYY') + '-url'] = key.relevantUrl
+          delete key.newPosition
+        }
         commit('updateKeywordFull', {
           areaId: areaId,
           keyword: key
@@ -495,7 +545,48 @@ export const store = new Vuex.Store({
         })
       }
     },
+    collectPositions ({ state, getters, commit, dispatch }, { areaId, keywords }) {
+      let area = state.areas.find(ar => {
+        return ar.id === areaId
+      })
 
+      // цикл по 50 слов - предел АПИ
+      let page_size = 50
+      let initialKeys = keywords.filter(keyword => {
+        if (keyword.positions) {
+          if (keyword.positions[moment().format('DD.MM.YYYY')]) {
+            return false
+          }
+        }
+        return true
+      }).map(keyword => { return keyword.keyword })
+
+      if (initialKeys.length === 0) {
+        console.log('Нет ключей для сбора позиций')
+        return
+      }
+      for (let page_number = 0; page_number < (initialKeys.length / page_size); page_number++) {
+        let pagedKeys = initialKeys.slice(page_number * page_size, (page_number + 1) * page_size);
+        // без частичных запросов
+        let keywords = pagedKeys
+
+        console.log('keywords:', keywords)
+        // получаем запросы по маркерам
+        axios.post('https://us-central1-autoseo-5d74f.cloudfunctions.net/getPositions', {
+          keywords: keywords
+        }).then(function (response) {
+          console.log('response', response)
+          if (!response.data.error) {
+            // сразу обновляем данные слова
+            dispatch('updateKeys', { keysArray: response.data, areaId: areaId })
+          } else {
+            console.log('Ошибка при вызове запроса:', response.data)
+          }
+        }).catch(function (error) {
+          console.log('Ошибка:', error)
+        })
+      }
+    },
     // projects
     addProject ({ state, commit, dispatch }, { project, areaId }) {
       commit('addProject', { project: project, areaId: areaId })
@@ -623,19 +714,28 @@ export const store = new Vuex.Store({
         console.log('Ошибка:', error)
       })
     },
-    parseWordstat ({ state, getters, commit }, { areaId, includeKeysType, excludeKeysType, collectType, projectType, keywordsInitial }) {
+    parseWordstat ({ state, getters, commit }, { areaId, includeKeysType, excludeKeysType, collectType, projectType, keywordsInitial, excludeWithFrequency }) {
       let area = state.areas.find(ar => {
         return ar.id === areaId
       })
 
       // запросы - это маркерные запросы зоны
       let keywords = keywordsInitial.filter(keyword => {
+        let interResult
         if (includeKeysType) {
-          return keyword.type === includeKeysType
+          interResult = keyword.type === includeKeysType
         } else {
-          return true
+          interResult = true
         }
+        if(excludeWithFrequency) {
+          if(keyword.freqBroad || keyword.freqPartitial || keyword.freqExact) {
+            interResult = false
+          }
+        }
+        return interResult
       }).map(keyword => { return keyword.keyword })
+
+      // пропускаем те, где уже есть частотность
 
       // стоп-слова - это минус-слова
       let stopwords = keywordsInitial.filter(keyword => {
@@ -701,11 +801,11 @@ export const store = new Vuex.Store({
                   docWithCollection: userProjectRef(state),
                   actionToAdd: 'addArea',
                   actionToRemove: 'removeArea',
-                  mutationToReplace: 'replaceArea',
+                  mutationToReplace: 'syncReplaceArea',
                   commit: commit,
                   dispatch: dispatch,
                   collectionName: 'areas',
-                  elementIdField: 'name',
+                  elementIdField: 'id',
                   mutationParamsObjectName: 'area',
                   functionToCallOnEachNewOrChangedDoc: (area) => {
                     // запросы
@@ -761,10 +861,10 @@ export const store = new Vuex.Store({
               console.log('Ошибка при слушании:', error)
             })
         } else {
-          console.log('user is undefined')
+          console.log('Пользователя проект не определен')
         }
       } else {
-        // console.log('4')
+        console.log('Пользователь не определен')
       }
     },
     populateDatabaseAndStartListening ({ state, getters }) {
@@ -893,9 +993,9 @@ function startUpdatingLocalCollection ({ areaId, docWithCollection, actionToAdd,
   docWithCollection.collection(collectionName)
     .onSnapshot(querySnapshot => {
       querySnapshot.docChanges.forEach(function (change) {
-        // console.log('change:', change)
+        //console.log('change:', change)
         let newDocData = change.doc.data()
-        // console.log('newDocData:', newDocData)
+        //console.log('newDocData:', newDocData)
         // ищем в массиве
         if (change.type === 'added') {
           // добавляем

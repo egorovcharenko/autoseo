@@ -72,6 +72,10 @@
                 v-icon(color="grey") mode_edit
                 v-text-field(label='Название', slot='input', v-model='tmpUrl', single-line)
             td.text-xs-center {{ props.item.freq }}
+            td.text-xs-center {{ props.item.assumedTraff }}
+            td.text-xs-center {{ props.item.comIntent }}
+            td.text-xs-center 
+              v-icon(light color="red" v-if='props.item.relevantUrlDiffers') warning
             td.text-xs-center {{ props.item.keywords }}
             td.text-xs-center 
             v-edit-dialog(@open='tmpChecks = props.item.checks', @save='updateClusterProperty(props.item, "checks", tmpChecks)', large)
@@ -108,6 +112,11 @@
           template(slot='pageText', scope='{ pageStart, pageStop }')
             | С {{ pageStart }} по {{ pageStop }}
 
+    
+    
+    
+    
+    
     v-card.my-2(v-if="selectedAreaId")
       v-card-title.py-0.light-green.lighten-3
         v-btn-toggle(v-model="keywordsShowType" mandatory )
@@ -117,10 +126,12 @@
         v-text-field.mx-1(append-icon='search', label='Искать', single-line, v-model='searchUnassigned')
         v-text-field.mx-1(label="Новый запрос",v-model="newUnassignedKeyword", :rules="newUnassignedKeywordRules", :counter="100", required)
         v-btn.mx-1(small, @click='addNewUnassignedKeyword') Добавить запрос
-        v-btn(small @click='searchInWordstat()') Поискать по маркерам в вордстате
+        //v-btn(small @click='searchInWordstat()') Поискать по маркерам в вордстате
         v-btn(small @click='collectAllFreqRush()') Собрать частотность
         v-btn(small @click='collectAllIntentsPixel()') Собрать интенты
-        v-btn.mx-1(small, @click='doClustering') Кластеризовать
+        v-btn(small @click='collectPositions()') Собрать позиции
+        //v-btn.mx-1(small, @click='doClustering') Кластеризовать
+
       v-data-table(v-bind:headers='headersKeywords', v-bind:items='keywords', v-bind:search='searchUnassigned' v-bind:pagination.sync='paginationKeywords')
         template(slot='items', scope='props')
           td
@@ -145,15 +156,24 @@
             v-edit-dialog(lazy)
               | {{ props.item.keyword }}
               v-text-field(slot='input', label='Edit', v-model='props.item.keyword', single-line, counter, :rules='[max25chars]')
-          td {{ props.item.freq }}
           td {{ props.item.freqBroad }}
           td {{ props.item.freqPartitial }}
           td {{ props.item.freqExact }}
           td {{ props.item.intent ? props.item.intent.com : '' }}
           td {{ props.item.assignedClusterName }}
+          td {{ props.item['position-7'] }}
+          td {{ props.item['position-6'] }}
+          td {{ props.item['position-5'] }}
+          td {{ props.item['position-4'] }}
+          td {{ props.item['position-3'] }}
+          td {{ props.item['position-2'] }}
+          td {{ props.item['position-1'] }}
+          td {{ props.item['position-0'] }}
+          td {{ props.item.relevantUrl }}
+            v-icon(light color="red" v-if='props.item.relevantUrlDiffers') warning
           td
             v-btn(small, @click='assignKeyword(props.item)', v-if='selectedClusterId') Привязать
-            v-btn(small, @click='unassignKeyword(props.item)') Отвязать
+            //v-btn(small, @click='unassignKeyword(props.item)') Отвязать
             v-btn.red(small, @click='removeKeyword(props.item)') Удалить
         template(slot='pageText', scope='{ pageStart, pageStop }')
           | From {{ pageStart }} to {{ pageStop }}
@@ -174,20 +194,52 @@
               v-list-tile-title {{ key.keyword }}
               v-list-tile-sub-title {{ key.url }}
 
-
 </template>
 
 <script>
 const regexpForUrl = /^(https?\:)\/\/(([^:\/?#]*)(?:\:([0-9]+))?)([\/]{0,1}[^?#]*)(\?[^#]*|)(#.*|)$/;
+function getLocation(href) {
+  var match = href.match(regexpForUrl);
+  let intemidiate = match && {
+    href: href,
+    protocol: match[1],
+    host: match[2],
+    hostname: match[3],
+    port: match[4],
+    pathname: match[5],
+    search: match[6],
+    hash: match[7]
+  };
+  return JSON.parse(JSON.stringify(intemidiate));
+}
 
 export default {
+  mounted() {
+    const numberOfDays = 7;
+    for (let i = 0; i <= numberOfDays; i++) {
+      let date = this.$moment()
+        .subtract(numberOfDays - i, "d")
+        .format("DD.MM");
+      let newHeader = {
+        text: date,
+        align: "left",
+        value: "position-" + (numberOfDays - i).toString()
+      };
+      this.$data.headersKeywords.push(newHeader);
+    }
+    this.$data.headersKeywords.push({
+      text: "Релевантный URL",
+      align: "left",
+      value: "relevantUrl"
+    });
+  },
   data() {
     return {
       tmpUrl: undefined,
       tmpChecks: undefined,
       tmpClusterName: undefined,
       tmpClusterType: undefined,
-      keywordsShowType: "allKeywords",
+      keywordsShowType: "onlyForCluster",
       clusteredKeywordsSelection: [],
       searchWordstat: "",
       wordstatActive: false,
@@ -234,17 +286,19 @@ export default {
         { text: "Название", align: "left", value: "name" },
         { text: "Url", align: "left", value: "fullurl" },
         { text: "Частотность", value: "freq" },
+        { text: "Ожидаем. траф.", value: "assumedTraff" },
+        { text: "Коммерч", value: "comIntent" },
+        { text: "URL отлич", value: "relevantUrlDiffers" },
         { text: "Запросы", value: "keywords" },
         { text: "Чеклист", value: "checks" }
       ],
       headersKeywords: [
         { text: "Тип", align: "left", value: "type" },
         { text: "Запрос", align: "left", value: "keyword" },
-        { text: "Частота?", align: "left", value: "freq" },
         { text: "Част общая", align: "left", value: "freqBroad" },
         { text: "Част частичн", align: "left", value: "freqPartitial" },
         { text: "Част точная", align: "left", value: "freqExact" },
-        { text: "Комм. интент", align: "left", value: "intent" },
+        { text: "Комм. интент", align: "left", value: "intent.com" },
         { text: "Кластер", align: "left", value: "assignedClusterName" }
       ],
       headersWordstat: [
@@ -359,6 +413,14 @@ export default {
         });
       }
     },
+    collectPositions() {
+      if (this.$store.getters.selectedAreaId) {
+        this.$store.dispatch("collectPositions", {
+          areaId: this.$store.getters.selectedAreaId,
+          keywords: this.keywords
+        });
+      }
+    },
     collectAllFreqRush() {
       if (this.$store.getters.selectedAreaId) {
         this.$store.dispatch("parseWordstat", {
@@ -367,7 +429,8 @@ export default {
           excludeKeysType: undefined,
           collectType: 0,
           projectType: "wordstatFreq",
-          keywordsInitial: this.keywords
+          keywordsInitial: this.keywords,
+          excludeWithFrequency: true
         });
       }
     },
@@ -379,15 +442,21 @@ export default {
           excludeKeysType: "minus",
           collectType: 1,
           projectType: "wordstat",
-          keywordsInitial: this.keywords
+          keywordsInitial: this.keywords,
+          excludeWithFrequency: false
         });
       }
     },
-    mergeClusters () {
+    mergeClusters() {
       this.$store.commit("mergeClusters", {
         areaId: this.$store.getters.selectedAreaId,
-        clusterIds: this.$data.selectedClusterIds.map(el => { return el.id })
+        clusterIds: this.$data.selectedClusterIds.map(el => {
+          return el.id;
+        })
       });
+
+      // очистить выбор кластеров
+      this.$data.selectedClusterIds = []
     },
     deleteCluster() {
       this.$store.commit("deleteCluster", {
@@ -422,7 +491,7 @@ export default {
       console.log("newAreaId:", newAreaId);
       let oldAreaId = this.$store.getters.selectedAreaId;
       this.$store.commit("moveClustersToNewArea", {
-        clustersToMoveIds: this.$data.selectedClusterIds,
+        clustersToMove: this.$data.selectedClusterIds,
         oldAreaId: oldAreaId,
         newAreaId: newAreaId
       });
@@ -499,7 +568,7 @@ export default {
       let tempClusters = this.$store.getters.allClustersForArea(
         this.$store.getters.selectedAreaId
       );
-
+      //console.log('tempClusters', tempClusters)
       let level = 0;
       if (tempClusters) {
         this.$data.currentPath.forEach(el => {
@@ -525,13 +594,72 @@ export default {
             });
             el.keywords = thisKeys.length;
             let sum = 0;
-            thisKeys.forEach(el => {
-              sum += el.freqExact ? el.freqExact : 0;
+
+            // предоплагаемый траффик с сео
+            let assumedTraff = 0.0;
+            let minComIntent = 1000;
+            let maxComIntent = -1000;
+            let relevantUrlDiffers = false;
+            thisKeys.forEach(elKey => {
+              // отличие страницы
+              if (elKey.relevantUrl) {
+                let parsedKeyUrl = getLocation("https://" + elKey.relevantUrl);
+                if (parsedKeyUrl.pathname !== el.url.pathname) {
+                  relevantUrlDiffers = true;
+                }
+              }
+              // коммерческий интент
+              if (elKey.intent) {
+                minComIntent = Math.min(elKey.intent.com, minComIntent);
+                maxComIntent = Math.max(elKey.intent.com, maxComIntent);
+              }
+              sum += elKey.freqExact ? elKey.freqExact : 0;
+
+              // добавляем ожидаемый траффик
+              let lastPosition = -1;
+              for (let i = 0; i <= 7; i++) {
+                if (elKey.positions) {
+                  let pastDate = this.$moment()
+                    .subtract(7 - i, "d")
+                    .format("DD.MM.YYYY");
+                  let position = elKey.positions[pastDate];
+                  if (position) {
+                    lastPosition = position;
+                  }
+                }
+              }
+              if (elKey.freqPartitial && elKey.freqPartitial>0) {
+                lastPosition = parseInt(lastPosition)
+                if (lastPosition && lastPosition > 0) {
+                  if (lastPosition < 4) {
+                    assumedTraff += elKey.freqPartitial * 1.0;
+                  } else if (lastPosition < 5) {
+                    assumedTraff += elKey.freqPartitial * 0.85;
+                  } else if (lastPosition < 6) {
+                    assumedTraff += elKey.freqPartitial * 0.6;
+                  } else if (lastPosition < 8) {
+                    assumedTraff += elKey.freqPartitial * 0.5;
+                  } else if (lastPosition < 10) {
+                    assumedTraff += elKey.freqPartitial * 0.3;
+                  } else if (lastPosition < 11) {
+                    assumedTraff += elKey.freqPartitial * 0.2;
+                  } else if (lastPosition < 21) {
+                    assumedTraff += elKey.freqPartitial * 0.05;
+                  }
+                }
+              }
             });
             el.freq = sum;
+
             // добавляем массив чекбоксов, если нужно
             if (el.checks === undefined) {
               el.checks = [];
+            }
+            el.assumedTraff = Math.round(assumedTraff);
+            el.relevantUrlDiffers = relevantUrlDiffers;
+            // интент
+            if (minComIntent < 200) {
+              el.comIntent = minComIntent + "-" + maxComIntent;
             }
           });
         }
@@ -562,18 +690,44 @@ export default {
           );
         });
       }
-      // добавляем нормально кластер
       let clusters = this.$store.getters.allClustersForArea(
         this.$store.getters.selectedAreaId
       );
       if (clusters && resultingKeywords) {
         resultingKeywords.forEach(el => {
+          // добавляем нормально кластер
           if (el.assignedCluster) {
             let foundCluster = clusters.find(elClust => {
               return elClust.id === el.assignedCluster;
             });
             if (foundCluster) {
+              // название кластера
               el.assignedClusterName = foundCluster.name;
+              // отличие страницы
+              if (el.relevantUrl) {
+                let parsedKeyUrl = getLocation("https://" + el.relevantUrl);
+                if (parsedKeyUrl.pathname !== foundCluster.url.pathname) {
+                  el.relevantUrlDiffers = true;
+                } else {
+                  el.relevantUrlDiffers = false;
+                }
+              }
+            }
+          }
+          // добавляем позиции за последние дни
+          let lastPosition = -1;
+          for (let i = 0; i <= 7; i++) {
+            let pastDate = this.$moment()
+              .subtract(7 - i, "d")
+              .format("DD.MM.YYYY");
+
+            el["position-" + (7 - i).toString()] = "-";
+            if (el.positions) {
+              let position = el.positions[pastDate];
+              if (position) {
+                lastPosition = position;
+                el["position-" + (7 - i).toString()] = position;
+              }
             }
           }
         });

@@ -25,8 +25,8 @@
                 div(style='min-height: 30px; min-width: 100px;')
                   v-edit-dialog(@open='tmp_name = props.item.name', @save='saveAreaName(props.item, tmp_name)', large, lazy)
                     | {{ props.item.name }}
-                    v-btn(@click='selectArea(props.item.id)') К кластерам
                     v-text-field(label='Название', slot='input', v-model='tmp_name', single-line, counter)
+                  v-btn(@click='selectArea(props.item.id)') К кластерам
           template(slot='pageText', scope='{ pageStart, pageStop }')
             | From {{ pageStart }} to {{ pageStop }}
           template(slot='expand', scope='props')
